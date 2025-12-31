@@ -1,7 +1,7 @@
 import pyray as rl
 import numpy as np
 
-class ball:
+class Ball:
     def __init__(self, m, x, y, xvel, yvel, radius):
         self.m = m
         self.x = x
@@ -9,7 +9,31 @@ class ball:
         self.xvel = xvel
         self.yvel = yvel
         self.radius = radius
-        
+
+# ASSUMPTION: b1 and b2 are colliding
+def apply_correction(b1, b2):
+    pos_1 = np.array([b1.x, b1.y], dtype=float)
+    pos_2 = np.array([b2.x, b2.y], dtype=float)
+    
+    R = b1.radius + b2.radius
+    dist = np.linalg.norm(pos_2 - pos_1)
+    if dist < 1e-3: # on top of each other, do nothing (TODO: design better behavior)
+        return
+    n = (pos_2 - pos_1) / dist
+    
+    inv_m1 = 1/b1.m
+    inv_m2 = 1/b2.m
+    
+    pen = R - dist
+    slop = 1e-3 * R
+    alpha = 0.5 # alpha in [0.2, 0.8] typically
+    if pen > 0:
+        del_p = (max(pen - slop, 0)/(inv_m1 + inv_m2)) * alpha * n
+        pos_1 -= inv_m1 * del_p
+        pos_2 += inv_m2 * del_p
+    b1.x, b1.y = pos_1
+    b2.x, b2.y = pos_2
+
 # ASSUMPTION: b1 and b2 are colliding.
 def handle_bounces(b1, b2, e):
     '''
@@ -19,33 +43,44 @@ def handle_bounces(b1, b2, e):
     :param b2: Ball 2
     REQUIREMENT: Ball 1 and ball 2 must be colliding.
     
-    RETURNS:
-    New velocities of ball 1 and ball 2. (tuple(np.array(2 values)))
+    Does not return, modifies the data of b1 and b2.
     '''
-    pos_1 = np.array([b1.x, b1.y])
-    pos_2 = np.array([b2.x, b2.y])
+    pos_1 = np.array([b1.x, b1.y], dtype=float)
+    pos_2 = np.array([b2.x, b2.y], dtype=float)
     
-    vel_1 = np.array([b1.xvel, b1.yvel])
-    vel_2 = np.array([b2.xvel, b2.yvel])
-    
-    
-    collision_normal = pos_2 - pos_1
-    collision_normal = collision_normal / np.linalg.norm(collision_normal)
+    vel_1 = np.array([b1.xvel, b1.yvel], dtype=float)
+    vel_2 = np.array([b2.xvel, b2.yvel], dtype=float)
     
     
-    velocity_along_normal = np.dot((vel_2 - vel_1), collision_normal)
-    print(velocity_along_normal)
-    if velocity_along_normal >= 0:
-        return (vel_1, vel_2)
+    n = pos_2 - pos_1
+    dist = np.linalg.norm(n)
+    if dist < 1e-3: # on top of each other, do nothing
+        return
+    n /= dist
+    
+    
+    vel_n = np.dot((vel_2 - vel_1),  n)
+    print(vel_n)
+    if vel_n >= 0: # already diverging, do nothing
+        return
 
-    impulse_magnitude = -1 * (1 + e) * velocity_along_normal / (1/b1.m + 1/b2.m) # chatgpt formula (TODO: fix div by 0)
+    inv_m1 = 1/b1.m
+    inv_m2 = 1/b2.m
+    
+    j = -1 * (1 + e) * vel_n / (inv_m1 + inv_m2) # chatgpt formula
     
     v1x, v1y = vel_1
     v2x, v2y = vel_2
-    new_vel_1 = [v1x - impulse_magnitude/b1.m * collision_normal[0], v1y - impulse_magnitude / b1.m * collision_normal[1]]
-    new_vel_2 = [v2x + impulse_magnitude/b2.m * collision_normal[0], v2y + impulse_magnitude / b2.m * collision_normal[1]]
+    new_vel_1 = [v1x - j/b1.m * n[0], v1y - j / b1.m * n[1]]
+    new_vel_2 = [v2x + j/b2.m * n[0], v2y + j / b2.m * n[1]]
     
-    return (new_vel_1, new_vel_2) # vel for b1, vel for b2
+    # velocities are updated
+    b1.xvel, b1.yvel = new_vel_1
+    b2.xvel, b2.yvel = new_vel_2
+    
+    # handle position correction
+    apply_correction(b1, b2)
+
 
 def main():
     screen_width = 900
@@ -56,9 +91,9 @@ def main():
     rl.init_window(screen_width, screen_height, 'Physics simulator! [v1]')
     
     balls = [] # all objects to iterate over
-    ball1 = ball(1, screen_width//2, screen_height//2, 0, 0, 50)
-    ball2 = ball(1, screen_width * (3/4), screen_height * (3/4), 0, 0, 100)
-    ball3 = ball(10, screen_width // 2 + 50, screen_height // 2 + 50, 10, 10, 10)
+    ball1 = Ball(1, screen_width//2, screen_height//2, 0, 0, 50)
+    ball2 = Ball(1, screen_width * (3/4), screen_height * (3/4), 0, 0, 100)
+    ball3 = Ball(10, screen_width // 2 + 50, screen_height // 2 + 50, 10, 10, 10)
     balls.append(ball1)
     balls.append(ball2)
     balls.append(ball3)
@@ -95,11 +130,7 @@ def main():
             for b2 in balls[idx+1:]:
                 center2 = (b2.x, b2.y)
                 if rl.check_collision_circles(center1, b1.radius, center2, b2.radius):
-                    b1vel, b2vel = handle_bounces(b1, b2, bounciness)
-                    b1velx, b1vely = float(b1vel[0]), float(b1vel[1])
-                    b2velx, b2vely = float(b2vel[0]), float(b2vel[1])
-                    
-                    b1.xvel, b1.yvel, b2.xvel, b2.yvel = b1velx, b1vely, b2velx, b2vely
+                    handle_bounces(b1, b2, bounciness)
         # start drawing all objects
         
         rl.begin_drawing()
