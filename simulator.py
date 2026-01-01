@@ -2,13 +2,17 @@ import pyray as rl
 import numpy as np
 
 class Ball:
-    def __init__(self, m, x, y, xvel, yvel, radius):
+    def __init__(self, m, x, y, xvel, yvel, radius, color=None):
         self.m = m
         self.x = x
         self.y = y
         self.xvel = xvel
         self.yvel = yvel
         self.radius = radius
+        if color:
+            self.color = color
+        else:
+            self.color = rl.BLUE
 
 # ASSUMPTION: b1 and b2 are colliding
 def apply_correction(b1, b2):
@@ -60,7 +64,6 @@ def handle_bounces(b1, b2, e):
     
     
     vel_n = np.dot((vel_2 - vel_1),  n)
-    print(vel_n)
     if vel_n >= 0: # already diverging, do nothing
         return
 
@@ -86,20 +89,19 @@ def main():
     screen_width = 900
     screen_height = 900
     
-    rl.set_target_fps(4)
+    rl.set_target_fps(50)
     
     rl.init_window(screen_width, screen_height, 'Physics simulator! [v1]')
     
     balls = [] # all objects to iterate over
-    ball1 = Ball(1, screen_width//2, screen_height//2, 0, 0, 50)
-    ball2 = Ball(1, screen_width * (3/4), screen_height * (3/4), 0, 0, 100)
-    ball3 = Ball(10, screen_width // 2 + 50, screen_height // 2 + 50, 10, 10, 10)
+    ball1 = Ball(1, screen_width//2 + 100, screen_height//2 + 100, 20, 2, 20, rl.GREEN)
+    ball2 = Ball(1, screen_width//2 - 100, screen_height//2 + 100, -2, -2, 20, rl.BLACK)
     balls.append(ball1)
     balls.append(ball2)
-    balls.append(ball3)
     
-    G = 2500
-    bounciness = 1.01
+    G = 0
+    bounciness = 0.9
+    universal_gravity = 0.1
     
     while not rl.window_should_close():
         for b1 in balls:
@@ -119,24 +121,47 @@ def main():
             b1.xvel += accel_x
             b1.yvel += accel_y
         
+        # handle universal gravity
+            for b in balls:
+                b.yvel += universal_gravity
+        
         # update positions based on velocities
         for b in balls:
             b.x += b.xvel
             b.y += b.yvel
         
-        # collision detection 
+        # collision handling with other balls
         for idx, b1 in enumerate(balls):
             center1 = (b1.x, b1.y)
             for b2 in balls[idx+1:]:
                 center2 = (b2.x, b2.y)
                 if rl.check_collision_circles(center1, b1.radius, center2, b2.radius):
                     handle_bounces(b1, b2, bounciness)
-        # start drawing all objects
         
+        # collision handling with border
+        for b in balls:
+            r = b.radius
+            left, right, top, bottom = b.x - r, b.x + r, b.y - r, b.y + r
+            
+            if left <= 0:
+                b.x = r
+                b.xvel *= -1 * bounciness
+            if right >= screen_width:
+                b.x = screen_width - r
+                b.xvel *= -1 * bounciness
+            if bottom >= screen_height:
+                b.y = screen_height - r
+                b.yvel *= -1 * bounciness
+            if top <= 0:
+                b.y = r
+                b.yvel *= -1 * bounciness
+            
+        
+        # start drawing all objects
         rl.begin_drawing()
         rl.clear_background(rl.RAYWHITE)
         for b in balls:
-            rl.draw_circle(round(b.x), round(b.y), b.radius, rl.BLUE)
+            rl.draw_circle(round(b.x), round(b.y), b.radius, b.color)
         rl.end_drawing()
     rl.close_window()
     
