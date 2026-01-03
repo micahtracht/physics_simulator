@@ -198,8 +198,8 @@ def main():
             
             if rl.check_collision_point_rec(mouse_pos, submit_box) and rl.is_mouse_button_down(0): # user clicked submit
                 if validate_inputs(new_mass_str, new_x_str, new_y_str, new_radius_str, new_color_str, screen_width, screen_height):
-                    ball_color = getattr(rl, new_color_str, None) # always blue for some reason
-                    new_ball = Ball(int(new_mass_str), rl.get_mouse_x(), rl.get_mouse_y(), int(new_x_vel), int(new_y_vel), int(new_radius_str), ball_color) # BUG: velocities not working correctly
+                    ball_color = getattr(rl, new_color_str.upper(), None) # always blue for some reason
+                    new_ball = Ball(int(new_mass_str), rl.get_mouse_x(), rl.get_mouse_y(), int(new_x_str), int(new_y_str), int(new_radius_str), ball_color) # BUG: velocities not working correctly
                     balls.append(new_ball)
                 menu_on = False
                 cooldown = 0.5
