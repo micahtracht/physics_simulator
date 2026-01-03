@@ -9,10 +9,39 @@ class Ball:
         self.xvel = xvel
         self.yvel = yvel
         self.radius = radius
-        if color:
+        if color is not None: # avoid fallback to falsy for C-bindings
             self.color = color
         else:
             self.color = rl.BLUE
+
+class InputBox:
+    def __init__(self, x, y, w, h, label, default_str="", color=rl.LIGHTGRAY):
+        self.rect = rl.Rectangle(x, y, w, h)
+        self.label = label
+        self.text = default_str
+        self.active = False
+        self.color = color # may make this a parameter
+    
+    def handle_input(self):
+        if rl.check_collision_point_rec(rl.get_mouse_position(), self.rect):
+            if rl.is_mouse_button_pressed(0):
+                self.active = True
+        elif rl.is_mouse_button_pressed(0):
+            self.active = False
+        
+        if self.active:
+            key = rl.get_char_pressed()
+            while key > 0:
+                if 32 <= key <= 125:
+                    self.text += chr(key)
+                key = rl.get_char_pressed()
+            if rl.is_key_pressed(rl.KeyboardKey.KEY_BACKSPACE):
+                self.text = self.text[:-1]
+    
+    def draw(self):
+        rl.draw_rectangle_rec(self.rect, self.color)
+        rl.draw_text(self.label, int(self.rect.x) - 100, int(self.rect.y), 20, rl.GRAY)
+        rl.draw_text(self.text, int(self.rect.x) + 5, int(self.rect.y) + 5, 20, rl.BLACK)
 
 # ASSUMPTION: b1 and b2 are colliding
 def apply_correction(b1, b2):
@@ -94,6 +123,35 @@ def validate_inputs(new_mass_str, new_x_str, new_y_str, new_radius_str, new_colo
     color_valid = color_str in ("LIGHTGRAY", "GRAY", "DARKGRAY", "YELLOW", "GOLD", 'ORANGE', 'PINK', 'RED', 'MAROON', 'GREEN', 'LIME', 'DARKGREEN', 'SKYBLUE', 'BLUE', 'DARKBLUE', 'PURPLE', 'VIOLET', 'DARKPURPLE', 'BEIGE', 'BROWN', 'DARKBROWN', 'WHITE', 'BLACK', 'MAGENTA', 'RAYWHITE') #  blank not valid color
     return mass_valid and radius_valid and color_valid
 
+def reset_menu():
+    menu_on = False
+    cooldown = 0.5
+    
+
+# May have issues with int(non-numeric string) throwing errors. TODO: add try-catch
+def submit_boxes(input):
+    new_mass = 0
+    new_x_vel = 0
+    new_y_vel = 0
+    new_radius = 0
+    new_color = None
+    for box in input:
+        if box.label == 'mass':
+            new_mass = int(box.text)
+        if box.label == 'x velocity':
+            new_x_vel  = int(box.text)
+        if box.label == 'y velocity':
+            new_y_vel = int(box.text)
+        if box.label == 'radius':
+            new_radius = int(box.text)
+        if box.label == 'color':
+            new_color = getattr(rl, box.text.upper(), None)
+    
+    menu_on = False
+    cooldown = 0.5
+    
+    mouse_x, mouse_y = rl.get_mouse_x(), rl.get_mouse_y()
+    return Ball(new_mass, mouse_x, mouse_y, new_x_vel, new_y_vel, new_radius, new_color)
 
 def main():
     screen_width = 900
@@ -104,37 +162,12 @@ def main():
     rl.init_window(screen_width, screen_height, 'Physics simulator! [v1]')
     
     balls = [] # all objects to iterate over
-    ball1 = Ball(1, screen_width//2 + 100, screen_height//2 + 100, 20, 2, 20, rl.GREEN)
-    ball2 = Ball(1, screen_width//2 - 100, screen_height//2 + 100, -2, -2, 20, rl.BLACK)
-    balls.append(ball1)
-    balls.append(ball2)
     
     G = 100
     bounciness = 0.9
     universal_gravity = 0.0
     
-    new_mass = 0
-    new_x_vel = 0
-    new_y_vel = 0
-    new_radius = 0
-    new_color = rl.WHITE
-    
-    new_mass_str = ""
-    new_x_str = ""
-    new_y_str = ""
-    new_radius_str = ""
-    new_color_str = ""
-    
-    
-    # initialize boxes with starting positions,  will be overriden when user clicks.
-    boudning_box = rl.Rectangle(0, 0, 200, 900) # MAY CHANGE NUMBERS
-    mass_box = rl.Rectangle(0, + 20, 0 + 30, 150, 50)
-    x_vel_box = rl.Rectangle(0 + 20, 0 + 110, 150, 50)
-    y_vel_box = rl.Rectangle(0 + 20, 0 + 190, 150, 50)
-    radius_box = rl.Rectangle(0 + 20, 0 + 270, 150, 50)
-    color_box = rl.Rectangle(0 + 20, 0 + 350, 150, 50)
-    submit_box = rl.Rectangle(20, 430, 150, 50)
-    close_box = rl.Rectangle(20, 0, 10, 10)
+    Inputs = []
     menu_on = False
     
     mouse_x, mouse_y = 0, 0
@@ -147,69 +180,30 @@ def main():
         if rl.is_mouse_button_down(0) and not menu_on and not cooldown:
             mouse_x = rl.get_mouse_x()
             mouse_y = rl.get_mouse_y()
-            boudning_box = rl.Rectangle(mouse_x, mouse_y, 190, 500) # MAY CHANGE NUMBERS
-            mass_box = rl.Rectangle(mouse_x + 20, mouse_y + 30, 150, 50)
-            x_vel_box = rl.Rectangle(mouse_x + 20, mouse_y + 110, 150, 50)
-            y_vel_box = rl.Rectangle(mouse_x + 20, mouse_y + 190, 150, 50)
-            radius_box = rl.Rectangle(mouse_x + 20, mouse_y + 270, 150, 50)
-            color_box = rl.Rectangle(mouse_x + 20, mouse_y + 350, 150, 50)
-            submit_box = rl.Rectangle(mouse_x + 20, mouse_y + 430, 150, 50)
-            close_box = rl.Rectangle(mouse_x + 20, mouse_y - 80, 150, 50)
-            print(boudning_box.x)
-            print(rl.get_mouse_x())
+            
+            inputs = [
+                InputBox(mouse_x + 20, mouse_y + 30, 150, 50, 'mass'),
+                InputBox(mouse_x + 20, mouse_y + 110, 150, 50, 'x velocity'),
+                InputBox(mouse_x + 20, mouse_y + 190, 150, 50, 'y velocity'),
+                InputBox(mouse_x + 20, mouse_y + 270, 150, 50, 'radius'),
+                InputBox(mouse_x + 20, mouse_y + 350, 150, 50, 'color'),
+            ]
+            submit_box = InputBox(mouse_x + 20, mouse_y + 430, 150, 50, 'submit', color=rl.GREEN)
+            close_box = InputBox(mouse_x + 20, mouse_y - 80, 150, 50, 'close', color=rl.RED)
             menu_on = True
         
         if menu_on:
             mouse_pos = rl.get_mouse_position()
-            if rl.check_collision_point_rec(mouse_pos, mass_box):
-                key_press = rl.get_char_pressed()
-                if key_press >= 48 and key_press <= 57:
-                    new_mass_str += chr(key_press)
-                if rl.is_key_pressed(rl.KeyboardKey.KEY_BACKSPACE):
-                    new_mass_str = new_mass_str[:-1]
+            for box in inputs:
+                # update self.text for each box, will use this
+                box.handle_input() # BUG: could not work, unsure. Just check this.
+            if rl.check_collision_point_rec(mouse_pos, submit_box.rect) and rl.is_mouse_button_pressed(0):
+                balls.append(submit_boxes(inputs))
+            if rl.check_collision_point_rec(mouse_pos, close_box.rect) and rl.is_mouse_button_pressed(0):
+                reset_menu()
+        
             
-            if rl.check_collision_point_rec(mouse_pos, x_vel_box):
-                key_press = rl.get_char_pressed()
-                if key_press >= 45 and key_press <= 57:
-                    new_x_str += chr(key_press)
-                if rl.is_key_pressed(rl.KeyboardKey.KEY_BACKSPACE):
-                    new_x_str = new_x_str[:-1]
-                    
-            if rl.check_collision_point_rec(mouse_pos, y_vel_box):
-                key_press = rl.get_char_pressed()
-                if key_press >= 45 and key_press <= 57:
-                    new_y_str += chr(key_press)
-                if rl.is_key_pressed(rl.KeyboardKey.KEY_BACKSPACE):
-                    new_y_str = new_y_str[:-1]
-            
-            if rl.check_collision_point_rec(mouse_pos, radius_box):
-                key_press = rl.get_char_pressed()
-                if key_press >= 48 and key_press <= 57:
-                    new_radius_str += chr(key_press)
-                if rl.is_key_pressed(rl.KeyboardKey.KEY_BACKSPACE):
-                    new_radius_str = new_radius_str[:-1]
-            
-            if rl.check_collision_point_rec(mouse_pos, color_box):
-                key_press = rl.get_char_pressed()
-                if key_press >= 32 and key_press <= 150:
-                    new_color_str += chr(key_press)
-                if rl.is_key_pressed(rl.KeyboardKey.KEY_BACKSPACE):
-                    new_color_str = new_color_str[:-1]
-            
-            if rl.check_collision_point_rec(mouse_pos, submit_box) and rl.is_mouse_button_down(0): # user clicked submit
-                if validate_inputs(new_mass_str, new_x_str, new_y_str, new_radius_str, new_color_str, screen_width, screen_height):
-                    ball_color = getattr(rl, new_color_str.upper(), None) # always blue for some reason
-                    new_ball = Ball(int(new_mass_str), rl.get_mouse_x(), rl.get_mouse_y(), int(new_x_str), int(new_y_str), int(new_radius_str), ball_color) # BUG: velocities not working correctly
-                    balls.append(new_ball)
-                menu_on = False
-                cooldown = 0.5
-                new_mass_str = ""
-                new_x_str = ""
-                new_y_str = ""
-                new_radius_str = ""
-                new_color_str = ""
-            
-            if rl.check_collision_point_rec(mouse_pos, close_box) and rl.is_mouse_button_down(0):
+            if rl.check_collision_point_rec(mouse_pos, close_box.rect) and rl.is_mouse_button_down(0):
                 menu_on = False
                 cooldown = 0.5
                 new_mass_str = ""
@@ -235,8 +229,8 @@ def main():
             b1.yvel += accel_y
         
         # handle universal gravity
-            for b in balls:
-                b.yvel += universal_gravity
+        for b in balls:
+            b.yvel += universal_gravity
         
         # update positions based on velocities
         for b in balls:
@@ -276,31 +270,10 @@ def main():
             rl.draw_circle(round(b.x), round(b.y), b.radius, b.color)
         
         if menu_on:
-            rl.draw_rectangle_rec(boudning_box, rl.BLACK)
-            rl.draw_rectangle_rec(mass_box, rl.GRAY)
-            rl.draw_rectangle_rec(x_vel_box, rl.RED)
-            rl.draw_rectangle_rec(y_vel_box, rl.RED)
-            rl.draw_rectangle_rec(radius_box, rl.BLUE)
-            rl.draw_rectangle_rec(color_box, rl.PURPLE)
-            rl.draw_rectangle_rec(submit_box, rl.GREEN)
-            rl.draw_rectangle_rec(close_box, rl.RED)
-            
-            # draw guiding text
-            rl.draw_text('mass:', mouse_x - 180, mouse_y + 20, font_size, rl.GRAY)
-            rl.draw_text('x velocity:', mouse_x - 220, mouse_y + 100, font_size, rl.RED)
-            rl.draw_text('y velocity:', mouse_x - 220, mouse_y + 180, font_size, rl.RED)
-            rl.draw_text('radius:', mouse_x - 180, mouse_y + 260, font_size, rl.BLUE)
-            rl.draw_text('color:', mouse_x - 180, mouse_y + 340, font_size, rl.PURPLE)
-            rl.draw_text('submit:', mouse_x - 180, mouse_y + 420, font_size, rl.GREEN)
-            
-            # draw user typed text
-            rl.draw_text(new_mass_str, round(mass_box.x + 20), round(mass_box.y + 10), 30, rl.BLACK)
-            rl.draw_text(new_x_str, round(x_vel_box.x + 20), round(x_vel_box.y + 10), 30, rl.BLACK)
-            rl.draw_text(new_y_str, round(y_vel_box.x + 20), round(y_vel_box.y + 10), 30, rl.BLACK)
-            rl.draw_text(new_radius_str, round(radius_box.x + 20), round(radius_box.y + 10), 30, rl.BLACK)
-            rl.draw_text(new_color_str, round(color_box.x + 20), round(color_box.y + 10), 30, rl.BLACK)
-            
-            #print(new_mass_str, new_x_str, new_y_str, new_radius_str, new_color_str)
+            for box in inputs:
+                box.draw()
+            rl.draw_rectangle_rec(submit_box.rect, submit_box.color)
+            rl.draw_rectangle_rec(close_box.rect, submit_box.color)
         rl.end_drawing()
     rl.close_window()
     
