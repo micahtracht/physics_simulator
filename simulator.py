@@ -20,7 +20,7 @@ class InputBox:
         self.label = label
         self.text = default_str
         self.active = False
-        self.color = color # may make this a parameter
+        self.color = color
     
     def handle_input(self):
         if rl.check_collision_point_rec(rl.get_mouse_position(), self.rect):
@@ -39,7 +39,10 @@ class InputBox:
                 self.text = self.text[:-1]
     
     def draw(self):
-        rl.draw_rectangle_rec(self.rect, self.color)
+        if self.active:
+            rl.draw_rectangle_rec(self.rect, rl.RED)
+        else:
+            rl.draw_rectangle_rec(self.rect, self.color)
         rl.draw_text(self.label, int(self.rect.x) - 100, int(self.rect.y), 20, rl.GRAY)
         rl.draw_text(self.text, int(self.rect.x) + 5, int(self.rect.y) + 5, 20, rl.BLACK)
 
@@ -122,10 +125,6 @@ def validate_inputs(new_mass_str, new_x_str, new_y_str, new_radius_str, new_colo
     color_str = new_color_str.upper()
     color_valid = color_str in ("LIGHTGRAY", "GRAY", "DARKGRAY", "YELLOW", "GOLD", 'ORANGE', 'PINK', 'RED', 'MAROON', 'GREEN', 'LIME', 'DARKGREEN', 'SKYBLUE', 'BLUE', 'DARKBLUE', 'PURPLE', 'VIOLET', 'DARKPURPLE', 'BEIGE', 'BROWN', 'DARKBROWN', 'WHITE', 'BLACK', 'MAGENTA', 'RAYWHITE') #  blank not valid color
     return mass_valid and radius_valid and color_valid
-
-def reset_menu():
-    menu_on = False
-    cooldown = 0.5
     
 
 # May have issues with int(non-numeric string) throwing errors. TODO: add try-catch
@@ -199,18 +198,15 @@ def main():
                 box.handle_input() # BUG: could not work, unsure. Just check this.
             if rl.check_collision_point_rec(mouse_pos, submit_box.rect) and rl.is_mouse_button_pressed(0):
                 balls.append(submit_boxes(inputs))
+                menu_on = False
+                cooldown = 0.5
             if rl.check_collision_point_rec(mouse_pos, close_box.rect) and rl.is_mouse_button_pressed(0):
-                reset_menu()
+                menu_on = False
+                cooldown = 0.5
         
             
             if rl.check_collision_point_rec(mouse_pos, close_box.rect) and rl.is_mouse_button_down(0):
-                menu_on = False
-                cooldown = 0.5
-                new_mass_str = ""
-                new_x_str = ""
-                new_y_str = ""
-                new_radius_str = ""
-                new_color_str = ""
+                ...
         for b1 in balls:
             force_x = 0
             force_y = 0
