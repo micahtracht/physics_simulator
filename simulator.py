@@ -1,19 +1,18 @@
 import pyray as rl
 import numpy as np
+from dataclasses import dataclass
 import constants
+import simstate
 
+@dataclass
 class Ball:
-    def __init__(self, m, x, y, xvel, yvel, radius, color=None):
-        self.m = m
-        self.x = x
-        self.y = y
-        self.xvel = xvel
-        self.yvel = yvel
-        self.radius = radius
-        if color is not None: # avoid fallback to falsy for C-bindings
-            self.color = color
-        else:
-            self.color = rl.BLUE
+    m: float
+    x: float
+    y: float
+    xvel: float
+    yvel: float
+    radius: float
+    color: rl.Color = rl.BLUE
 
 class InputBox:
     def __init__(self, x, y, w, h, label, default_str="", box_color=rl.LIGHTGRAY, label_color=rl.BLACK):
@@ -74,15 +73,6 @@ def apply_correction(b1, b2):
 
 # ASSUMPTION: b1 and b2 are colliding.
 def handle_bounces(b1, b2, e):
-    '''
-    Docstring for handle_bounces
-    
-    :param b1: Ball 1
-    :param b2: Ball 2
-    REQUIREMENT: Ball 1 and ball 2 must be colliding.
-    
-    Does not return, modifies the data of b1 and b2.
-    '''
     pos_1 = np.array([b1.x, b1.y], dtype=float)
     pos_2 = np.array([b2.x, b2.y], dtype=float)
     
@@ -119,49 +109,59 @@ def handle_bounces(b1, b2, e):
     apply_correction(b1, b2)
     
 
-# May have issues with int(non-numeric string) throwing errors. TODO: add try-catch
 def submit_boxes(inputs):
     new_mass = 0
     new_x_vel = 0
     new_y_vel = 0
     new_radius = 0
     new_color = None
+    
     for box in inputs:
         if box.label == 'mass':
             try:
-                new_mass = int(box.text)
+                new_mass = float(box.text)
             except ValueError:
+                simstate.alert_user = constants.alert_length
                 return None
         if box.label == 'x velocity':
             try:
-                new_x_vel  = int(box.text)
+                new_x_vel  = float(box.text)
             except ValueError:
+                simstate.alert_user = constants.alert_length
                 return None
         if box.label == 'y velocity':
             try:
-                new_y_vel = int(box.text)
+                new_y_vel = float(box.text)
             except ValueError:
+                simstate.alert_user = constants.alert_length
                 return None
         if box.label == 'radius':
             try:
-                new_radius = int(box.text)
+                new_radius = float(box.text)
             except ValueError:
+                simstate.alert_user = constants.alert_length
                 return None
         if box.label == 'color':
-            try:
-                new_color = getattr(rl, box.text.upper(), None)
-            except ValueError:
-                return None 
+            new_color = getattr(rl, box.text.upper(), None)
+    
+    if new_mass <= 0 or new_radius <= 0:
+        simstate.alert_user = constants.alert_length
+        return None
+
+    if new_color is None:
+        new_color = rl.BLUE
     
     mouse_x, mouse_y = rl.get_mouse_x(), rl.get_mouse_y()
     return Ball(new_mass, mouse_x, mouse_y, new_x_vel, new_y_vel, new_radius, new_color)
 
 def handle_gravity_physics(balls):
-    for b1 in balls:
+    for i, b1 in enumerate(balls):
         force_x = 0
         force_y = 0
         
-        for b2 in balls:
+        for j, b2 in enumerate(balls):
+            if i == j:
+                continue
             numerator = constants.G * b1.m * b2.m
             denominator = ((b2.x - b1.x)**2 + (b2.y - b1.y)**2)**(3/2)
             
@@ -209,29 +209,33 @@ def handle_collisions_border(balls):
             b.y = r
             b.yvel *= -1 * constants.bounciness
 
+def handle_creation(balls, inputs, submit_box, close_box):
+    mouse_pos = rl.get_mouse_position()
+    for box in inputs:
+        box.handle_input()
+    if rl.check_collision_point_rec(mouse_pos, submit_box.rect) and rl.is_mouse_button_pressed(0):
+        ball = submit_boxes(inputs)
+        if ball is not None:
+            balls.append(ball)
+        simstate.menu_on = False
+        simstate.cooldown = constants.cooldown_seconds
+    if rl.check_collision_point_rec(mouse_pos, close_box.rect) and rl.is_mouse_button_pressed(0):
+        simstate.menu_on = False
+        simstate.cooldown = constants.cooldown_seconds
+
 def main():
     screen_width = constants.screen_width
     screen_height = constants.screen_height
     
     rl.set_target_fps(constants.fps)
-    
     rl.init_window(screen_width, screen_height, 'Physics simulator! [v1]')
     
     balls = [] # all objects to iterate over
     
-    G = constants.G
-    bounciness = constants.bounciness
-    universal_gravity = constants.universal_gravity
-    
-    menu_on = False
-    
-    mouse_x, mouse_y = 0, 0
-    
-    cooldown = 0
-    
     while not rl.window_should_close():
-        cooldown = max(0, cooldown - 1/constants.fps)
-        if rl.is_mouse_button_down(0) and not menu_on and not cooldown:
+        simstate.cooldown = max(0, simstate.cooldown - 1/constants.fps)
+        simstate.alert_user = max(0, simstate.alert_user - 1/constants.fps)
+        if rl.is_mouse_button_down(0) and not simstate.menu_on and not simstate.cooldown:
             mouse_x = rl.get_mouse_x()
             mouse_y = rl.get_mouse_y()
             
@@ -244,21 +248,10 @@ def main():
             ]
             submit_box = InputBox(mouse_x + 20, mouse_y + 430, 150, 50, 'submit', box_color=rl.GREEN)
             close_box = InputBox(mouse_x + 20, mouse_y - 50, 150, 50, 'close', box_color=rl.RED)
-            menu_on = True
+            simstate.menu_on = True
         
-        if menu_on:
-            mouse_pos = rl.get_mouse_position()
-            for box in inputs:
-                box.handle_input()
-            if rl.check_collision_point_rec(mouse_pos, submit_box.rect) and rl.is_mouse_button_pressed(0):
-                ball = submit_boxes(inputs)
-                if ball is not None:
-                    balls.append(ball)
-                menu_on = False
-                cooldown = constants.cooldown_seconds
-            if rl.check_collision_point_rec(mouse_pos, close_box.rect) and rl.is_mouse_button_pressed(0):
-                menu_on = False
-                cooldown = constants.cooldown_seconds
+        if simstate.menu_on:
+            handle_creation(balls, inputs, submit_box, close_box)
         
         handle_gravity_physics(balls)
         handle_collisions_other_balls(balls)
@@ -270,11 +263,15 @@ def main():
         for b in balls:
             rl.draw_circle(round(b.x), round(b.y), b.radius, b.color)
         
-        if menu_on:
+        if simstate.menu_on:
             for box in inputs:
                 box.draw()
             submit_box.draw()
             close_box.draw()
+        
+        if simstate.alert_user:
+            to_draw = "Your input parameters were invalid!"
+            rl.draw_text(to_draw, constants.screen_width // 2 - rl.measure_text(to_draw, 40) // 2, constants.screen_height // 2, 40, rl.RED)
         rl.end_drawing()
     rl.close_window()
     
