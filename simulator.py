@@ -15,12 +15,13 @@ class Ball:
             self.color = rl.BLUE
 
 class InputBox:
-    def __init__(self, x, y, w, h, label, default_str="", color=rl.LIGHTGRAY):
+    def __init__(self, x, y, w, h, label, default_str="", box_color=rl.LIGHTGRAY, label_color=rl.BLACK):
         self.rect = rl.Rectangle(x, y, w, h)
         self.label = label
         self.text = default_str
         self.active = False
-        self.color = color
+        self.box_color = box_color
+        self.label_color = label_color
     
     def handle_input(self):
         if rl.check_collision_point_rec(rl.get_mouse_position(), self.rect):
@@ -42,8 +43,8 @@ class InputBox:
         if self.active:
             rl.draw_rectangle_rec(self.rect, rl.RED)
         else:
-            rl.draw_rectangle_rec(self.rect, self.color)
-        rl.draw_text(self.label, int(self.rect.x) - 100, int(self.rect.y), 20, rl.GRAY)
+            rl.draw_rectangle_rec(self.rect, self.box_color)
+        rl.draw_text(self.label, int(self.rect.x) - 2 * rl.measure_text(self.label, 10) - 10, int(self.rect.y + self.rect.height // 2 - 10), 20, self.label_color)
         rl.draw_text(self.text, int(self.rect.x) + 5, int(self.rect.y) + 5, 20, rl.BLACK)
 
 # ASSUMPTION: b1 and b2 are colliding
@@ -136,15 +137,30 @@ def submit_boxes(input):
     new_color = None
     for box in input:
         if box.label == 'mass':
-            new_mass = int(box.text)
+            try:
+                new_mass = int(box.text)
+            except ValueError:
+                return None
         if box.label == 'x velocity':
-            new_x_vel  = int(box.text)
+            try:
+                new_x_vel  = int(box.text)
+            except ValueError:
+                return None
         if box.label == 'y velocity':
-            new_y_vel = int(box.text)
+            try:
+                new_y_vel = int(box.text)
+            except ValueError:
+                return None
         if box.label == 'radius':
-            new_radius = int(box.text)
+            try:
+                new_radius = int(box.text)
+            except ValueError:
+                return None
         if box.label == 'color':
-            new_color = getattr(rl, box.text.upper(), None)
+            try:
+                new_color = getattr(rl, box.text.upper(), None)
+            except ValueError:
+                return None
     
     menu_on = False
     cooldown = 0.5
@@ -166,7 +182,6 @@ def main():
     bounciness = 0.9
     universal_gravity = 0.0
     
-    Inputs = []
     menu_on = False
     
     mouse_x, mouse_y = 0, 0
@@ -187,17 +202,18 @@ def main():
                 InputBox(mouse_x + 20, mouse_y + 270, 150, 50, 'radius'),
                 InputBox(mouse_x + 20, mouse_y + 350, 150, 50, 'color'),
             ]
-            submit_box = InputBox(mouse_x + 20, mouse_y + 430, 150, 50, 'submit', color=rl.GREEN)
-            close_box = InputBox(mouse_x + 20, mouse_y - 80, 150, 50, 'close', color=rl.RED)
+            submit_box = InputBox(mouse_x + 20, mouse_y + 430, 150, 50, 'submit', box_color=rl.GREEN)
+            close_box = InputBox(mouse_x + 20, mouse_y - 50, 150, 50, 'close', box_color=rl.RED)
             menu_on = True
         
         if menu_on:
             mouse_pos = rl.get_mouse_position()
             for box in inputs:
-                # update self.text for each box, will use this
-                box.handle_input() # BUG: could not work, unsure. Just check this.
+                box.handle_input()
             if rl.check_collision_point_rec(mouse_pos, submit_box.rect) and rl.is_mouse_button_pressed(0):
-                balls.append(submit_boxes(inputs))
+                ball = submit_boxes(inputs)
+                if ball is not None:
+                    balls.append(ball)
                 menu_on = False
                 cooldown = 0.5
             if rl.check_collision_point_rec(mouse_pos, close_box.rect) and rl.is_mouse_button_pressed(0):
@@ -268,8 +284,8 @@ def main():
         if menu_on:
             for box in inputs:
                 box.draw()
-            rl.draw_rectangle_rec(submit_box.rect, submit_box.color)
-            rl.draw_rectangle_rec(close_box.rect, submit_box.color)
+            submit_box.draw()
+            close_box.draw()
         rl.end_drawing()
     rl.close_window()
     
