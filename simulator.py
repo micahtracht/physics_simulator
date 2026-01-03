@@ -1,5 +1,6 @@
 import pyray as rl
 import numpy as np
+import constants
 
 class Ball:
     def __init__(self, m, x, y, xvel, yvel, radius, color=None):
@@ -116,26 +117,16 @@ def handle_bounces(b1, b2, e):
     
     # handle position correction
     apply_correction(b1, b2)
-
-def validate_inputs(new_mass_str, new_x_str, new_y_str, new_radius_str, new_color_str, screen_width, screen_height):
-    if not new_mass_str or not new_x_str or not new_y_str or not new_radius_str or not new_color_str:
-        return False
-    mass_valid = int(new_mass_str) > 0 and int(new_mass_str) <= 10**9
-    radius_valid = int(new_radius_str) > 0 and int(new_radius_str) < min(screen_height, screen_width)
-    
-    color_str = new_color_str.upper()
-    color_valid = color_str in ("LIGHTGRAY", "GRAY", "DARKGRAY", "YELLOW", "GOLD", 'ORANGE', 'PINK', 'RED', 'MAROON', 'GREEN', 'LIME', 'DARKGREEN', 'SKYBLUE', 'BLUE', 'DARKBLUE', 'PURPLE', 'VIOLET', 'DARKPURPLE', 'BEIGE', 'BROWN', 'DARKBROWN', 'WHITE', 'BLACK', 'MAGENTA', 'RAYWHITE') #  blank not valid color
-    return mass_valid and radius_valid and color_valid
     
 
 # May have issues with int(non-numeric string) throwing errors. TODO: add try-catch
-def submit_boxes(input):
+def submit_boxes(inputs):
     new_mass = 0
     new_x_vel = 0
     new_y_vel = 0
     new_radius = 0
     new_color = None
-    for box in input:
+    for box in inputs:
         if box.label == 'mass':
             try:
                 new_mass = int(box.text)
@@ -160,37 +151,86 @@ def submit_boxes(input):
             try:
                 new_color = getattr(rl, box.text.upper(), None)
             except ValueError:
-                return None
-    
-    menu_on = False
-    cooldown = 0.5
+                return None 
     
     mouse_x, mouse_y = rl.get_mouse_x(), rl.get_mouse_y()
     return Ball(new_mass, mouse_x, mouse_y, new_x_vel, new_y_vel, new_radius, new_color)
 
-def main():
-    screen_width = 900
-    screen_height = 900
+def handle_gravity_physics(balls):
+    for b1 in balls:
+        force_x = 0
+        force_y = 0
+        
+        for b2 in balls:
+            numerator = constants.G * b1.m * b2.m
+            denominator = ((b2.x - b1.x)**2 + (b2.y - b1.y)**2)**(3/2)
+            
+            force_x += numerator * (b2.x - b1.x) / denominator if denominator > 0.001 else 0
+            force_y += numerator * (b2.y - b1.y) / denominator if denominator > 0.001 else 0
+        
+        # now we have forces, use that to calculate accelerations and update positions
+        accel_x = force_x / b1.m
+        accel_y = force_y / b1.m
+        b1.xvel += accel_x
+        b1.yvel += accel_y
     
-    rl.set_target_fps(50)
+    # handle universal gravity
+    for b in balls:
+        b.yvel += constants.universal_gravity
+    
+    # update positions based on velocities
+    for b in balls:
+        b.x += b.xvel
+        b.y += b.yvel
+
+def handle_collisions_other_balls(balls):
+    for idx, b1 in enumerate(balls):
+        center1 = (b1.x, b1.y)
+        for b2 in balls[idx+1:]:
+            center2 = (b2.x, b2.y)
+            if rl.check_collision_circles(center1, b1.radius, center2, b2.radius):
+                handle_bounces(b1, b2, constants.bounciness)
+
+def handle_collisions_border(balls):
+    for b in balls:
+        r = b.radius
+        left, right, top, bottom = b.x - r, b.x + r, b.y - r, b.y + r
+        
+        if left <= 0:
+            b.x = r
+            b.xvel *= -1 * constants.bounciness
+        if right >= constants.screen_width:
+            b.x = constants.screen_width - r
+            b.xvel *= -1 * constants.bounciness
+        if bottom >= constants.screen_height:
+            b.y = constants.screen_height - r
+            b.yvel *= -1 * constants.bounciness
+        if top <= 0:
+            b.y = r
+            b.yvel *= -1 * constants.bounciness
+
+def main():
+    screen_width = constants.screen_width
+    screen_height = constants.screen_height
+    
+    rl.set_target_fps(constants.fps)
     
     rl.init_window(screen_width, screen_height, 'Physics simulator! [v1]')
     
     balls = [] # all objects to iterate over
     
-    G = 100
-    bounciness = 0.9
-    universal_gravity = 0.0
+    G = constants.G
+    bounciness = constants.bounciness
+    universal_gravity = constants.universal_gravity
     
     menu_on = False
     
     mouse_x, mouse_y = 0, 0
     
-    font_size = 40
     cooldown = 0
     
     while not rl.window_should_close():
-        cooldown = max(0, cooldown - 1/60) # HACK
+        cooldown = max(0, cooldown - 1/constants.fps)
         if rl.is_mouse_button_down(0) and not menu_on and not cooldown:
             mouse_x = rl.get_mouse_x()
             mouse_y = rl.get_mouse_y()
@@ -215,65 +255,14 @@ def main():
                 if ball is not None:
                     balls.append(ball)
                 menu_on = False
-                cooldown = 0.5
+                cooldown = constants.cooldown_seconds
             if rl.check_collision_point_rec(mouse_pos, close_box.rect) and rl.is_mouse_button_pressed(0):
                 menu_on = False
-                cooldown = 0.5
+                cooldown = constants.cooldown_seconds
         
-            
-            if rl.check_collision_point_rec(mouse_pos, close_box.rect) and rl.is_mouse_button_down(0):
-                ...
-        for b1 in balls:
-            force_x = 0
-            force_y = 0
-            
-            for b2 in balls:
-                numerator = G * b1.m * b2.m
-                denominator = ((b2.x - b1.x)**2 + (b2.y - b1.y)**2)**(3/2)
-                
-                force_x += numerator * (b2.x - b1.x) / denominator if denominator > 0.001 else 0
-                force_y += numerator * (b2.y - b1.y) / denominator if denominator > 0.001 else 0
-            
-            # now we have forces, use that to calculate accelerations and update positions
-            accel_x = force_x / b1.m
-            accel_y = force_y / b1.m
-            b1.xvel += accel_x
-            b1.yvel += accel_y
-        
-        # handle universal gravity
-        for b in balls:
-            b.yvel += universal_gravity
-        
-        # update positions based on velocities
-        for b in balls:
-            b.x += b.xvel
-            b.y += b.yvel
-        
-        # collision handling with other balls
-        for idx, b1 in enumerate(balls):
-            center1 = (b1.x, b1.y)
-            for b2 in balls[idx+1:]:
-                center2 = (b2.x, b2.y)
-                if rl.check_collision_circles(center1, b1.radius, center2, b2.radius):
-                    handle_bounces(b1, b2, bounciness)
-        
-        # collision handling with border
-        for b in balls:
-            r = b.radius
-            left, right, top, bottom = b.x - r, b.x + r, b.y - r, b.y + r
-            
-            if left <= 0:
-                b.x = r
-                b.xvel *= -1 * bounciness
-            if right >= screen_width:
-                b.x = screen_width - r
-                b.xvel *= -1 * bounciness
-            if bottom >= screen_height:
-                b.y = screen_height - r
-                b.yvel *= -1 * bounciness
-            if top <= 0:
-                b.y = r
-                b.yvel *= -1 * bounciness
+        handle_gravity_physics(balls)
+        handle_collisions_other_balls(balls)
+        handle_collisions_border(balls)
         
         # start drawing all objects
         rl.begin_drawing()
@@ -288,10 +277,6 @@ def main():
             close_box.draw()
         rl.end_drawing()
     rl.close_window()
-    
-
-    
-    
     
 if __name__ == "__main__":
     main()
